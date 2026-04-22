@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小说信息 - 网络小说流行趋势分析系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.min.css">
+    <style>
+        body { background-color: #f5f5f5; }
+        .navbar { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .novel-card { transition: transform 0.2s, box-shadow 0.2s; }
+        .novel-card:hover { transform: translateY(-3px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .novel-intro { color: #666; font-size: 0.9em; line-height: 1.6; }
+        .status-badge连载中 { background-color: #28a745; }
+        .status-badge已完结 { background-color: #6c757d; }
+        .status-badge暂停 { background-color: #ffc107; color: #000; }
+        .pagination-wrap { justify-content: center; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="/"><i class="bi bi-book"></i> 网络小说流行趋势分析系统</a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/">首页</a>
+                <a class="nav-link" href="/analysis">分析</a>
+                <a class="nav-link" href="/admin">管理</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="card mb-4">
+            <div class="card-body">
+                <form id="searchForm" class="row g-3">
+                    <div class="col-md-3">
+                        <input type="text" class="form-control" id="keyword" placeholder="小说名/作者">
+                    </div>
+                    <div class="col-md-2">
+                        <select class="form-select" id="category">
+                            <option value="">全部分类</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <select class="form-select" id="status">
+                            <option value="">全部状态</option>
+                            <option value="连载中">连载中</option>
+                            <option value="已完结">已完结</option>
+                            <option value="暂停">暂停</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-primary w-100"><i class="bi bi-search"></i> 搜索</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">小说列表</h5>
+                <span class="text-muted" id="totalCount">共 0 条</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>小说名称</th>
+                                <th>作者</th>
+                                <th>分类</th>
+                                <th>状态</th>
+                                <th>字数</th>
+                                <th>更新时间</th>
+                                <th>简介</th>
+                            </tr>
+                        </thead>
+                        <tbody id="novelTableBody">
+                            <tr><td colspan="7" class="text-center py-4">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card-footer">
+                <nav>
+                    <ul class="pagination mb-0" id="pagination"></ul>
+                </nav>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentPage = 1;
+        let pageSize = 20;
+        let total = 0;
+
+        function loadNovels(page = 1) {
+            currentPage = page;
+            const keyword = document.getElementById('keyword').value;
+            const category = document.getElementById('category').value;
+            const status = document.getElementById('status').value;
+
+            let url = `/api/novels?page=${page}&size=${pageSize}`;
+            if (keyword) url += `&keyword=${encodeURIComponent(keyword)}`;
+            if (category) url += `&category=${encodeURIComponent(category)}`;
+            if (status) url += `&status=${encodeURIComponent(status)}`;
+
+            fetch(url)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        renderTable(data.data.items);
+                        total = data.data.total;
+                        renderPagination();
+                        document.getElementById('totalCount').textContent = `共 ${total} 条`;
+                    }
+                });
+        }
+
+        function renderTable(items) {
+            const tbody = document.getElementById('novelTableBody');
+            if (!items || items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4">暂无数据</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = items.map(item => `
+                <tr>
+                    <td><a href="${item.source_url}" target="_blank">${item.novel_name}</a></td>
+                    <td>${item.author_name || '-'}</td>
+                    <td>${item.category_name || '-'}</td>
+                    <td><span class="badge status-badge${item.status}">${item.status || '-'}</span></td>
+                    <td>${item.word_count ? item.word_count.toLocaleString() : '-'}</td>
+                    <td>${item.update_time || '-'}</td>
+                    <td class="novel-intro">${item.intro || '-'}</td>
+                </tr>
+            `).join('');
+        }
+
+        function renderPagination() {
+            const totalPages = Math.ceil(total / pageSize);
+            const pagination = document.getElementById('pagination');
+
+            if (totalPages <= 1) {
+                pagination.innerHTML = '';
+                return;
+            }
+
+            let html = '';
+            html += `<li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                <a class="page-link" href="javascript:loadNovels(${currentPage - 1})">上一页</a>
+            </li>`;
+
+            for (let i = 1; i <= Math.min(totalPages, 5); i++) {
+                html += `<li class="page-item ${currentPage === i ? 'active' : ''}">
+                    <a class="page-link" href="javascript:loadNovels(${i})">${i}</a>
+                </li>`;
+            }
+
+            html += `<li class="page-item ${currentPage >= totalPages ? 'disabled' : ''}">
+                <a class="page-link" href="javascript:loadNovels(${currentPage + 1})">下一页</a>
+            </li>`;
+
+            pagination.innerHTML = html;
+        }
+
+        document.getElementById('searchForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            loadNovels(1);
+        });
+
+        loadNovels();
+    </script>
+</body>
+</html>

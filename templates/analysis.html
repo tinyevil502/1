@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据分析 - 网络小说流行趋势分析系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        body { background-color: #f5f5f5; }
+        .navbar { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .chart-card { height: 400px; }
+        .status-summary-card { background: #f8f9fa; border-radius: 8px; padding: 12px; }
+        .status-summary-card .stat-value { font-size: 1.4em; font-weight: 700; }
+        .status-summary-card .stat-label { color: #6c757d; font-size: 0.8em; }
+        .status-ratio { font-size: 0.9em; font-weight: 600; margin-top: 6px; }
+        .status-ongoing { color: #1976d2; }
+        .status-finished { color: #2e7d32; }
+        .filter-bar { background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .data-badge { font-size: 0.85em; padding: 4px 8px; border-radius: 4px; }
+        .badge-trend { background: #e3f2fd; color: #1976d2; }
+        .badge-distribution { background: #fff3e0; color: #f57c00; }
+        .extended-section { border-top: 3px dashed #ccc; margin-top: 30px; padding-top: 20px; }
+        .extended-section .card-header { background: #f8f9fa; color: #6c757d; }
+        .alert-info-custom { background: #e7f3ff; border: 1px solid #b3d9ff; color: #004085; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="/"><i class="bi bi-book"></i> 网络小说流行趋势分析系统</a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/">首页</a>
+                <a class="nav-link active" href="/analysis">分析</a>
+                <a class="nav-link" href="/admin">管理</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h4 class="mb-0"><i class="bi bi-graph-up"></i> 数据分析</h4>
+            <div>
+                <span id="dataModeBadge" class="data-badge badge-distribution">加载中...</span>
+            </div>
+        </div>
+
+        <div class="filter-bar">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label">开始日期</label>
+                    <input type="date" id="startDate" class="form-control">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">结束日期</label>
+                    <input type="date" id="endDate" class="form-control">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">统计周期</label>
+                    <select id="granularity" class="form-select">
+                        <option value="day">天</option>
+                        <option value="week">周</option>
+                        <option value="month">月</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">天数范围</label>
+                    <select id="daysRange" class="form-select">
+                        <option value="7">近7天</option>
+                        <option value="30" selected>近30天</option>
+                        <option value="90">近90天</option>
+                        <option value="180">近180天</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-primary w-100" onclick="applyFilters()"><i class="bi bi-search"></i> 查询</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="singleDataAlert" class="alert alert-info-custom d-none mb-4">
+            <i class="bi bi-info-circle"></i> <strong>提示：</strong>当前数据为单次采集结果，仅支持分布分析。趋势分析需依赖多批次数据。
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>分类分布</span>
+                        <span id="categoryScope" class="data-badge badge-trend" style="font-size:0.75em;"></span>
+                    </div>
+                    <div class="card-body chart-card" id="categoryChart"></div>
+                    <div id="categoryAnalysis" class="card-footer text-muted" style="font-size:0.85em; padding: 8px 15px;"></div>
+                </div>
+            </div>
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>状态分布</span>
+                        <span id="statusScope" class="data-badge badge-trend" style="font-size:0.75em;"></span>
+                    </div>
+                    <div class="card-body" style="height: 350px;">
+                        <div class="row h-100">
+                            <div class="col-7" id="statusChart" style="height: 100%;"></div>
+                            <div class="col-5 d-flex align-items-center">
+                                <div id="statusSummary" class="w-100" style="font-size: 0.85em;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="statusAnalysis" class="card-footer text-muted" style="font-size:0.85em; padding: 8px 15px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>更新时间趋势</span>
+                        <span id="trendScope" class="data-badge badge-trend" style="font-size:0.75em;"></span>
+                    </div>
+                    <div class="card-body chart-card" id="trendChart"></div>
+                    <div id="trendAnalysis" class="card-footer text-muted" style="font-size:0.85em; padding: 8px 15px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">关键词排行 TOP 20</div>
+                    <div class="card-body chart-card" id="keywordChart"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">每日字数趋势</div>
+                    <div class="card-body chart-card" id="wordTrendChart"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="extended-section">
+            <h5 class="mb-3"><i class="bi bi-lightning-charge"></i> 流行小说趋势</h5>
+            <div class="alert alert-info-custom mb-4">
+                <i class="bi bi-info-circle"></i> <strong>本模块展示不同时间段内作者集中跟风创作的题材风潮，及其持续时间与活跃更新率。</strong>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-bar-chart-line"></i> 各题材在各时间段的小说数量对比</span>
+                            <span class="badge bg-primary">核心图表</span>
+                        </div>
+                        <div class="card-body" style="height: 450px;" id="genreStackedChart"></div>
+                        <div id="genreStackedAnalysis" class="card-footer text-muted" style="font-size:0.85em; padding: 8px 15px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-grid-3x3"></i> 题材热度热力图（时间段 × 类别）</span>
+                            <span class="badge bg-success">直观对比</span>
+                        </div>
+                        <div class="card-body" style="height: 400px;" id="genreHeatmap"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-md-6 mb-4">
+                    <div class="card h-100">
+                        <div class="card-header"><i class="bi bi-activity"></i> 各题材活跃更新率趋势</div>
+                        <div class="card-body chart-card" id="genreActiveRateChart"></div>
+                        <div id="genreActiveAnalysis" class="card-footer text-muted" style="font-size:0.85em; padding: 8px 15px;"></div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-4">
+                    <div class="card h-100">
+                        <div class="card-header"><i class="bi bi-speedometer2"></i> 各题材数量变化趋势</div>
+                        <div class="card-body chart-card" id="genreCountChart"></div>
+                        <div id="genreCountAnalysis" class="card-footer text-muted" style="font-size:0.85em; padding: 8px 15px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card border-primary">
+                        <div class="card-header bg-primary text-white"><i class="bi bi-chat-quote"></i> 趋势分析结论</div>
+                        <div class="card-body" id="trendConclusion" style="font-size: 0.95em; line-height: 1.8;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header"><i class="bi bi-table"></i> 各题材风潮持续时间与状态</div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover table-sm mb-0" id="trendSummaryTable">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>题材</th>
+                                            <th>首次出现</th>
+                                            <th>最后出现</th>
+                                            <th>持续时间段数</th>
+                                            <th>峰值时期</th>
+                                            <th>峰值数量</th>
+                                            <th>最新数量</th>
+                                            <th>趋势方向</th>
+                                            <th>活跃更新率</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="trendSummaryBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let hasMultiBatch = false;
+        let categoryChart, statusChart, trendChart, keywordChart, wordTrendChart, activeRateChart, growthRateChart;
+        let genreStackedChart, genreHeatmapChart, genreActiveRateChartInst, genreCountChartInst;
+
+        function getFilterParams() {
+            return {
+                start_date: document.getElementById('startDate').value,
+                end_date: document.getElementById('endDate').value,
+                granularity: document.getElementById('granularity').value,
+                days: document.getElementById('daysRange').value
+            };
+        }
+
+        function buildQueryString(params) {
+            const parts = [];
+            if (params.start_date) parts.push(`start_date=${params.start_date}`);
+            if (params.end_date) parts.push(`end_date=${params.end_date}`);
+            if (params.granularity) parts.push(`granularity=${params.granularity}`);
+            if (params.days) parts.push(`days=${params.days}`);
+            return parts.join('&');
+        }
+
+        function applyFilters() {
+            loadCategoryDistribution();
+            loadStatusDistribution();
+            loadUpdateTrend();
+            loadKeywords();
+            loadWordTrend();
+            if (hasMultiBatch) {
+                loadActiveRateTrend();
+                loadGrowthRateChart();
+            }
+            loadGenreTrend();
+        }
+
+        function loadCategoryDistribution() {
+            const params = getFilterParams();
+            const qs = buildQueryString(params);
+            fetch(`/api/analysis/category-distribution?${qs}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        const chart = echarts.init(document.getElementById('categoryChart'));
+                        const items = data.data.items || [];
+                        const meta = data.data._meta || {};
+                        if (meta.has_multi_batch !== undefined) {
+                            hasMultiBatch = meta.has_multi_batch;
+                            updateDataModeBadge();
+                            loadExtendedAnalysis();
+                        }
+                        const scopeEl = document.getElementById('categoryScope');
+                        scopeEl.textContent = `共 ${meta.total} 部`;
+                        const names = items.map(i => i.name);
+                        const counts = items.map(i => i.count);
+                        const colors = ['#667eea', '#764ba2', '#4caf50', '#ff9800', '#e91e63', '#00bcd4', '#9c27b0', '#ff5722', '#9e9e9e'];
+                        chart.setOption({
+                            tooltip: {
+                                trigger: 'axis',
+                                axisPointer: { type: 'shadow' },
+                                formatter: p => `${p[0].name}<br/>数量: ${p[0].value} (${(p[0].value / meta.total * 100).toFixed(1)}%)`
+                            },
+                            grid: { left: '3%', right: '15%', bottom: '3%', top: '3%', containLabel: true },
+                            xAxis: { type: 'value', name: '数量' },
+                            yAxis: { type: 'category', data: names, inverse: true },
+                            series: [{
+                                type: 'bar',
+                                data: counts.map((v, i) => ({
+                                    value: v,
+                                    itemStyle: { color: colors[i % colors.length] },
+                                    label: {
+                                        show: true,
+                                        position: 'right',
+                                        formatter: `${v} (${(v / meta.total * 100).toFixed(1)}%)`
+                                    }
+                                })),
+                                barMaxWidth: 30
+                            }]
+                        });
+                        const top1 = items[0];
+                        const top1Pct = (top1.count / meta.total * 100).toFixed(1);
+                        const analysisEl = document.getElementById('categoryAnalysis');
+                        analysisEl.textContent = `统计范围: 全部分类 | 样本总数: ${meta.total} | ${top1.name} 以 ${top1.count} 部 (${top1Pct}%) 位居第一`;
+                    }
+                });
+        }
+
+        function loadStatusDistribution() {
+            const params = getFilterParams();
+            const qs = buildQueryString(params);
+            fetch(`/api/analysis/status-distribution?${qs}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        const chart = echarts.init(document.getElementById('statusChart'));
+                        const items = data.data.items || [];
+                        const ongoing = data.data.ongoing || {};
+                        const finished = data.data.finished || {};
+                        const ratio = data.data.ratio;
+                        const meta = data.data._meta || {};
+                        if (meta.has_multi_batch !== undefined) {
+                            hasMultiBatch = meta.has_multi_batch;
+                            updateDataModeBadge();
+                        }
+                        const scopeEl = document.getElementById('statusScope');
+                        scopeEl.textContent = `共 ${meta.total} 部`;
+                        const colors = { '连载中': '#1976d2', '已完结': '#2e7d32', '未知': '#9e9e9e' };
+                        chart.setOption({
+                            tooltip: {
+                                trigger: 'item',
+                                formatter: p => `${p.name}<br/>数量: ${p.value} (${p.percent}%)`
+                            },
+                            series: [{
+                                type: 'pie',
+                                radius: ['45%', '72%'],
+                                center: ['50%', '50%'],
+                                avoidLabelOverlap: false,
+                                itemStyle: {
+                                    borderColor: '#fff',
+                                    borderWidth: 2
+                                },
+                                label: {
+                                    show: true,
+                                    formatter: '{b}\n{d}%',
+                                    fontSize: 11
+                                },
+                                emphasis: {
+                                    label: { show: true, fontSize: 13, fontWeight: 'bold' }
+                                },
+                                data: items.map(i => ({
+                                    name: i.name,
+                                    value: i.count,
+                                    itemStyle: { color: colors[i.name] || '#764ba2' }
+                                }))
+                            }]
+                        });
+                        const summaryEl = document.getElementById('statusSummary');
+                        let ratioHtml = '';
+                        if (ratio !== null && ratio !== undefined) {
+                            ratioHtml = `<div class="status-ratio">连载/完结 ≈ ${ratio} : 1</div>`;
+                        }
+                        summaryEl.innerHTML = `
+                            <div class="status-summary-card">
+                                <div class="mb-2">
+                                    <div class="stat-label">连载中</div>
+                                    <div class="stat-value status-ongoing">${ongoing.count || 0}</div>
+                                    <div class="stat-label">${((ongoing.share || 0) * 100).toFixed(1)}%</div>
+                                </div>
+                                <div class="mb-2">
+                                    <div class="stat-label">已完结</div>
+                                    <div class="stat-value status-finished">${finished.count || 0}</div>
+                                    <div class="stat-label">${((finished.share || 0) * 100).toFixed(1)}%</div>
+                                </div>
+                                ${ratioHtml}
+                                <div class="mt-2" style="font-size:0.75em; color:#999;">样本: ${meta.total} 部</div>
+                            </div>
+                        `;
+                        const analysisEl = document.getElementById('statusAnalysis');
+                        let analysisText = `统计范围: 全状态 | 样本总数: ${meta.total} | `;
+                        if (ongoing.count > finished.count) {
+                            analysisText += `连载中作品 (${ongoing.count} 部, ${((ongoing.share||0)*100).toFixed(1)}%) 占主导地位`;
+                        } else if (finished.count > ongoing.count) {
+                            analysisText += `已完结作品 (${finished.count} 部, ${((finished.share||0)*100).toFixed(1)}%) 占主导地位`;
+                        } else {
+                            analysisText += `连载与完结作品数量相当`;
+                        }
+                        if (ratio !== null && ratio !== undefined) {
+                            analysisText += `，连载完结比约为 ${ratio}:1`;
+                        }
+                        analysisEl.textContent = analysisText;
+                    }
+                });
+        }
+
+        function loadUpdateTrend() {
+            const params = getFilterParams();
+            const qs = buildQueryString(params);
+            fetch(`/api/analysis/update-trend?${qs}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        const chart = echarts.init(document.getElementById('trendChart'));
+                        const meta = data.data._meta || {};
+                        if (data.data.has_multi_batch !== undefined) {
+                            hasMultiBatch = data.data.has_multi_batch;
+                            updateDataModeBadge();
+                        }
+                        const scopeEl = document.getElementById('trendScope');
+                        const analysisEl = document.getElementById('trendAnalysis');
+                        if (data.data.mode === 'single_batch') {
+                            scopeEl.textContent = `共 ${meta.total} 部`;
+                            const labels = data.data.labels;
+                            const counts = data.data.counts;
+                            const total = counts.reduce((a, b) => a + b, 0);
+                            const colors = ['#4caf50', '#667eea', '#ff9800', '#e91e63', '#9e9e9e'];
+                            chart.setOption({
+                                tooltip: {
+                                    trigger: 'axis',
+                                    axisPointer: { type: 'shadow' },
+                                    formatter: p => `${p[0].name}<br/>数量: ${p[0].value} (${(p[0].value / total * 100).toFixed(1)}%)`
+                                },
+                                grid: { left: '3%', right: '10%', bottom: '10%', top: '3%', containLabel: true },
+                                xAxis: { type: 'category', data: labels },
+                                yAxis: { type: 'value', name: '数量' },
+                                series: [{
+                                    type: 'bar',
+                                    data: counts.map((v, i) => ({
+                                        value: v,
+                                        itemStyle: { color: colors[i] },
+                                        label: {
+                                            show: true,
+                                            position: 'top',
+                                            formatter: p => `${p.value} (${(p.value / total * 100).toFixed(1)}%)`
+                                        }
+                                    })),
+                                    barMaxWidth: 80
+                                }]
+                            });
+                            const maxIdx = counts.indexOf(Math.max(...counts));
+                            analysisEl.textContent = `统计范围: 全部小说 | 样本总数: ${meta.total} | 更新活跃度集中在"${labels[maxIdx]}"区间 (${counts[maxIdx]} 部, ${(counts[maxIdx] / total * 100).toFixed(1)}%)`;
+                        } else {
+                            scopeEl.textContent = `共 ${meta.total} 部`;
+                            const dates = data.data.dates;
+                            const activeCounts = data.data.active_counts || [];
+                            const activeRates = (data.data.active_rates || []).map(r => (r * 100).toFixed(2));
+                            const series = [
+                                {
+                                    name: '活跃小说数',
+                                    type: 'line',
+                                    data: activeCounts,
+                                    smooth: true,
+                                    itemStyle: { color: '#4caf50' },
+                                    yAxisIndex: 0
+                                },
+                                {
+                                    name: '活跃率',
+                                    type: 'line',
+                                    data: activeRates,
+                                    smooth: true,
+                                    itemStyle: { color: '#ff9800' },
+                                    yAxisIndex: 1
+                                }
+                            ];
+                            chart.setOption({
+                                tooltip: {
+                                    trigger: 'axis',
+                                    formatter: p => {
+                                        let s = p[0].axisValue + '<br/>';
+                                        p.forEach(item => { s += `${item.marker} ${item.seriesName}: ${item.value}${item.seriesName === '活跃率' ? '%' : ''}<br/>`; });
+                                        return s;
+                                    }
+                                },
+                                legend: { bottom: 0 },
+                                grid: { left: '3%', right: '10%', bottom: '10%', top: '10%', containLabel: true },
+                                xAxis: { type: 'category', data: dates },
+                                yAxis: [
+                                    { type: 'value', name: '活跃小说数' },
+                                    { type: 'value', name: '活跃率(%)', max: 100 }
+                                ],
+                                series: series
+                            });
+                            if (activeCounts.length > 0) {
+                                const maxIdx = activeCounts.indexOf(Math.max(...activeCounts));
+                                const avgRate = (activeRates.reduce((a, b) => a + parseFloat(b), 0) / activeRates.length).toFixed(1);
+                                analysisEl.textContent = `统计范围: 多批次采集 | 样本总数: ${meta.total} | ${dates[maxIdx]} 活跃小说数最高 (${activeCounts[maxIdx]} 部)，平均活跃率 ${avgRate}%`;
+                            } else {
+                                analysisEl.textContent = `统计范围: 多批次采集 | 样本总数: ${meta.total} | 暂无活跃数据`;
+                            }
+                        }
+                    }
+                });
+        }
+
+        function loadKeywords() {
+            const params = getFilterParams();
+            const qs = buildQueryString(params);
+            fetch(`/api/keywords?topk=20&${qs}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        const chart = echarts.init(document.getElementById('keywordChart'));
+                        const keywords = Object.entries(data.data)
+                            .sort((a, b) => (b[1].weight || b[1]) - (a[1].weight || a[1]))
+                            .slice(0, 20);
+                        const values = keywords.map(k => {
+                            if (typeof k[1] === 'object') return k[1].weight || 0;
+                            return k[1];
+                        });
+                        chart.setOption({
+                            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+                            grid: { left: '3%', right: '10%', bottom: '3%', containLabel: true },
+                            xAxis: { type: 'value' },
+                            yAxis: { type: 'category', data: keywords.map(k => k[0]), inverse: true },
+                            series: [{
+                                type: 'bar',
+                                data: values,
+                                itemStyle: { color: '#764ba2' }
+                            }]
+                        });
+                    }
+                });
+        }
+
+        function loadWordTrend() {
+            const params = getFilterParams();
+            const qs = buildQueryString(params);
+            fetch(`/api/analysis/word-trend?${qs}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        const chart = echarts.init(document.getElementById('wordTrendChart'));
+                        chart.setOption({
+                            tooltip: { trigger: 'axis' },
+                            xAxis: { type: 'category', data: data.data.dates },
+                            yAxis: { type: 'value', name: '平均字数' },
+                            series: [{
+                                type: 'line',
+                                data: data.data.avg_word_counts,
+                                smooth: true,
+                                areaStyle: { opacity: 0.3 },
+                                itemStyle: { color: '#4caf50' }
+                            }]
+                        });
+                    }
+                });
+        }
+
+        function loadActiveRateTrend() {
+            const params = getFilterParams();
+            const qs = buildQueryString(params);
+            fetch(`/api/analysis/update-trend?${qs}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success && data.data.active_rates && data.data.active_rates.length > 0) {
+                        const chart = echarts.init(document.getElementById('activeRateChart'));
+                        const rates = data.data.active_rates.map(r => (r * 100).toFixed(2));
+                        chart.setOption({
+                            tooltip: { trigger: 'axis', formatter: '{b}: {c}%' },
+                            xAxis: { type: 'category', data: data.data.dates },
+                            yAxis: { type: 'value', name: '活跃率(%)', max: 100 },
+                            series: [{
+                                type: 'line',
+                                data: rates,
+                                smooth: true,
+                                areaStyle: { opacity: 0.3 },
+                                itemStyle: { color: '#ff9800' },
+                                markLine: {
+                                    data: [{ type: 'average', name: '平均值' }]
+                                }
+                            }]
+                        });
+                    } else {
+                        const chart = echarts.init(document.getElementById('activeRateChart'));
+                        chart.setOption({
+                            title: { text: '多批次数据不足，无法计算活跃率', left: 'center', top: 'center', textStyle: { color: '#999' } }
+                        });
+                    }
+                });
+        }
+
+        function loadGrowthRateChart() {
+            const params = getFilterParams();
+            const qs = buildQueryString(params);
+            fetch(`/api/trends?dimension_type=category&${qs}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        const chart = echarts.init(document.getElementById('growthRateChart'));
+                        const growthData = {};
+                        data.data.forEach(item => {
+                            if (item.growth_rate !== null && item.growth_rate !== undefined) {
+                                if (!growthData[item.dimension_value]) {
+                                    growthData[item.dimension_value] = { dates: [], rates: [] };
+                                }
+                                growthData[item.dimension_value].dates.push(item.stat_date);
+                                growthData[item.dimension_value].rates.push((item.growth_rate * 100).toFixed(2));
+                            }
+                        });
+                        const series = Object.entries(growthData).map(([name, d]) => ({
+                            name: name,
+                            type: 'line',
+                            data: d.rates,
+                            smooth: true
+                        }));
+                        if (series.length > 0) {
+                            const allDates = [...new Set(Object.values(growthData).flatMap(d => d.dates))].sort();
+                            chart.setOption({
+                                tooltip: { trigger: 'axis', formatter: '{b}: {c}%' },
+                                legend: { bottom: 0, type: 'scroll' },
+                                xAxis: { type: 'category', data: allDates },
+                                yAxis: { type: 'value', name: '增长率(%)' },
+                                series: series
+                            });
+                        } else {
+                            chart.setOption({
+                                title: { text: '多批次数据不足，无法计算增长率', left: 'center', top: 'center', textStyle: { color: '#999' } }
+                            });
+                        }
+                    }
+                });
+        }
+
+        function updateDataModeBadge() {
+            const badge = document.getElementById('dataModeBadge');
+            const alert = document.getElementById('singleDataAlert');
+            if (hasMultiBatch) {
+                badge.textContent = '多批次趋势分析';
+                badge.className = 'data-badge badge-trend';
+                alert.classList.add('d-none');
+            } else {
+                badge.textContent = '单次样本分析';
+                badge.className = 'data-badge badge-distribution';
+                alert.classList.remove('d-none');
+            }
+        }
+
+        function loadExtendedAnalysis() {
+            if (hasMultiBatch) {
+                loadActiveRateTrend();
+                loadGrowthRateChart();
+            } else {
+                const activeRateChart = echarts.init(document.getElementById('activeRateChart'));
+                activeRateChart.setOption({
+                    title: { text: '需要多批次数据才能计算活跃率', left: 'center', top: 'center', textStyle: { color: '#999' } }
+                });
+                const growthRateChart = echarts.init(document.getElementById('growthRateChart'));
+                growthRateChart.setOption({
+                    title: { text: '需要多批次数据才能计算增长率', left: 'center', top: 'center', textStyle: { color: '#999' } }
+                });
+            }
+            loadGenreTrend();
+        }
+
+        const GENRE_COLORS = {
+            '玄幻': '#667eea', '奇幻': '#764ba2', '仙侠': '#4caf50', '都市': '#ff9800',
+            '历史': '#e91e63', '军事': '#00bcd4', '游戏': '#9c27b0', '体育': '#ff5722',
+            '科幻': '#3f51b5', '言情': '#f44336', '穿越': '#009688', '架空': '#795548',
+            '悬疑': '#607d8b', '武侠': '#8bc34a', '轻小说': '#ffc107', '同人': '#e040fb',
+            '未分类': '#9e9e9e'
+        };
+
+        function getGenreColor(name) {
+            return GENRE_COLORS[name] || '#' + Math.floor(Math.random()*16777215).toString(16);
+        }
+
+        function loadGenreTrend() {
+            fetch('/api/analysis/genre-trend')
+                .then(res => res.json())
+                .then(data => {
+                    if (!data.success) return;
+                    const d = data.data;
+                    const periods = d.periods;
+                    const topCats = d.top_categories;
+                    const catTrend = d.category_trend;
+                    const activeRateTrend = d.active_rate_trend;
+                    const trendSummary = d.trend_summary;
+                    const conclusion = d.conclusion;
+
+                    const stackedSeries = topCats.map(cat => ({
+                        name: cat,
+                        type: 'bar',
+                        stack: 'total',
+                        emphasis: { focus: 'series' },
+                        data: catTrend[cat] || [],
+                        itemStyle: { color: getGenreColor(cat) },
+                        label: { show: false }
+                    }));
+
+                    genreStackedChart = echarts.init(document.getElementById('genreStackedChart'));
+                    genreStackedChart.setOption({
+                        tooltip: {
+                            trigger: 'axis',
+                            axisPointer: { type: 'shadow' },
+                            formatter: function(params) {
+                                let s = params[0].axisValue + '<br/>';
+                                let total = 0;
+                                params.forEach(p => { total += p.value; });
+                                params.forEach(p => {
+                                    if (p.value > 0) {
+                                        const pct = total > 0 ? (p.value / total * 100).toFixed(1) : 0;
+                                        s += `${p.marker} ${p.seriesName}: ${p.value} 部 (${pct}%)<br/>`;
+                                    }
+                                });
+                                s += `<b>合计: ${total} 部</b>`;
+                                return s;
+                            }
+                        },
+                        legend: { bottom: 0, type: 'scroll' },
+                        grid: { left: '3%', right: '4%', bottom: '12%', top: '5%', containLabel: true },
+                        xAxis: { type: 'category', data: periods, axisLabel: { rotate: 30 } },
+                        yAxis: { type: 'value', name: '小说数量' },
+                        series: stackedSeries
+                    });
+                    const analysisEl = document.getElementById('genreStackedAnalysis');
+                    if (periods.length >= 2) {
+                        const first = periods[0], last = periods[periods.length - 1];
+                        analysisEl.textContent = `对比 ${periods.length} 个采集批次（${first} 至 ${last}），堆叠柱状图展示各题材在不同时间段的数量变化，柱子越高说明该时期该题材越热门。`;
+                    }
+
+                    const heatmapData = d.heatmap_data.map(item => {
+                        const catIdx = d.categories.indexOf(item.category);
+                        const periodIdx = periods.indexOf(item.period);
+                        return [periodIdx, catIdx, item.value];
+                    });
+                    genreHeatmapChart = echarts.init(document.getElementById('genreHeatmap'));
+                    genreHeatmapChart.setOption({
+                        tooltip: {
+                            formatter: function(p) {
+                                return `${d.categories[p.data[1]]} · ${periods[p.data[0]]}<br/>数量: ${p.data[2]} 部`;
+                            }
+                        },
+                        grid: { left: '15%', right: '10%', bottom: '15%', top: '5%' },
+                        xAxis: {
+                            type: 'category',
+                            data: periods,
+                            position: 'bottom',
+                            axisLabel: { rotate: 30 }
+                        },
+                        yAxis: {
+                            type: 'category',
+                            data: d.categories,
+                            inverse: true
+                        },
+                        visualMap: {
+                            min: 0,
+                            max: Math.max(...heatmapData.map(d => d[2]), 1),
+                            calculable: true,
+                            orient: 'horizontal',
+                            left: 'center',
+                            bottom: 0,
+                            inRange: { color: ['#f7fbff', '#c6dbef', '#6baed6', '#2171b5', '#08306b'] }
+                        },
+                        series: [{
+                            type: 'heatmap',
+                            data: heatmapData,
+                            label: { show: true, fontSize: 11 },
+                            emphasis: {
+                                itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.5)' }
+                            }
+                        }]
+                    });
+
+                    const activeSeries = topCats.map(cat => ({
+                        name: cat,
+                        type: 'line',
+                        data: (activeRateTrend[cat] || []).map(r => (r * 100).toFixed(1)),
+                        smooth: true,
+                        itemStyle: { color: getGenreColor(cat) },
+                        markLine: { data: [{ type: 'average', name: '均值' }] }
+                    }));
+                    genreActiveRateChartInst = echarts.init(document.getElementById('genreActiveRateChart'));
+                    genreActiveRateChartInst.setOption({
+                        tooltip: { trigger: 'axis', formatter: '{b}: {c}%' },
+                        legend: { bottom: 0, type: 'scroll' },
+                        grid: { left: '3%', right: '4%', bottom: '15%', top: '5%', containLabel: true },
+                        xAxis: { type: 'category', data: periods, axisLabel: { rotate: 30 } },
+                        yAxis: { type: 'value', name: '活跃更新率(%)', max: 100 },
+                        series: activeSeries
+                    });
+                    const activeAnalysisEl = document.getElementById('genreActiveAnalysis');
+                    const activeCats = topCats.filter(c => (activeRateTrend[c] || []).length > 0 && (activeRateTrend[c] || []).slice(-1)[0] > 0.3);
+                    if (activeCats.length > 0) {
+                        activeAnalysisEl.textContent = `活跃更新率 > 30% 的题材：${activeCats.join('、')}，说明这些题材的风潮仍在持续。`;
+                    } else {
+                        activeAnalysisEl.textContent = '所有题材活跃更新率均较低，可能处于采集间隔期。';
+                    }
+
+                    const countSeries = topCats.map(cat => ({
+                        name: cat,
+                        type: 'line',
+                        data: catTrend[cat] || [],
+                        smooth: true,
+                        itemStyle: { color: getGenreColor(cat) },
+                        areaStyle: { opacity: 0.15 }
+                    }));
+                    genreCountChartInst = echarts.init(document.getElementById('genreCountChart'));
+                    genreCountChartInst.setOption({
+                        tooltip: { trigger: 'axis', formatter: '{b}: {c} 部' },
+                        legend: { bottom: 0, type: 'scroll' },
+                        grid: { left: '3%', right: '4%', bottom: '15%', top: '5%', containLabel: true },
+                        xAxis: { type: 'category', data: periods, axisLabel: { rotate: 30 } },
+                        yAxis: { type: 'value', name: '小说数量' },
+                        series: countSeries
+                    });
+                    const countAnalysisEl = document.getElementById('genreCountAnalysis');
+                    const rising = Object.entries(trendSummary).filter(([_, s]) => s.trend_direction === 'rising').map(([c]) => c);
+                    const declining = Object.entries(trendSummary).filter(([_, s]) => s.trend_direction === 'declining').map(([c]) => c);
+                    let caText = '';
+                    if (rising.length > 0) caText += `上升题材：${rising.join('、')}。`;
+                    if (declining.length > 0) caText += `减弱题材：${declining.join('、')}。`;
+                    countAnalysisEl.textContent = caText || '暂无明显趋势变化。';
+
+                    document.getElementById('trendConclusion').innerHTML = `<p>${conclusion}</p>`;
+
+                    const tbody = document.getElementById('trendSummaryBody');
+                    let tableHtml = '';
+                    const directionLabels = {
+                        'rising': '<span class="badge bg-success">上升中</span>',
+                        'declining': '<span class="badge bg-danger">减弱中</span>',
+                        'stable': '<span class="badge bg-warning text-dark">稳定</span>',
+                        'inactive': '<span class="badge bg-secondary">沉寂</span>'
+                    };
+                    topCats.forEach(cat => {
+                        const s = trendSummary[cat];
+                        if (!s) return;
+                        tableHtml += `<tr>
+                            <td><strong style="color:${getGenreColor(cat)}">${cat}</strong></td>
+                            <td>${s.first_period || '-'}</td>
+                            <td>${s.last_period || '-'}</td>
+                            <td>${s.duration_periods} 期</td>
+                            <td>${s.peak_period || '-'}</td>
+                            <td>${s.peak_count}</td>
+                            <td>${s.latest_count}</td>
+                            <td>${directionLabels[s.trend_direction] || s.trend_direction}</td>
+                            <td>${(s.latest_active_rate * 100).toFixed(1)}%</td>
+                        </tr>`;
+                    });
+                    tbody.innerHTML = tableHtml;
+                });
+        }
+
+        function initCharts() {
+            categoryChart = echarts.init(document.getElementById('categoryChart'));
+            statusChart = echarts.init(document.getElementById('statusChart'));
+            trendChart = echarts.init(document.getElementById('trendChart'));
+            keywordChart = echarts.init(document.getElementById('keywordChart'));
+            wordTrendChart = echarts.init(document.getElementById('wordTrendChart'));
+            activeRateChart = echarts.init(document.getElementById('activeRateChart'));
+            growthRateChart = echarts.init(document.getElementById('growthRateChart'));
+        }
+
+        window.addEventListener('load', function() {
+            initCharts();
+            loadCategoryDistribution();
+            loadStatusDistribution();
+            loadUpdateTrend();
+            loadKeywords();
+            loadWordTrend();
+            loadGenreTrend();
+        });
+
+        window.addEventListener('resize', function() {
+            echarts.getInstanceByDom(document.getElementById('categoryChart'))?.resize();
+            echarts.getInstanceByDom(document.getElementById('statusChart'))?.resize();
+            echarts.getInstanceByDom(document.getElementById('trendChart'))?.resize();
+            echarts.getInstanceByDom(document.getElementById('keywordChart'))?.resize();
+            echarts.getInstanceByDom(document.getElementById('wordTrendChart'))?.resize();
+            echarts.getInstanceByDom(document.getElementById('activeRateChart'))?.resize();
+            echarts.getInstanceByDom(document.getElementById('growthRateChart'))?.resize();
+            echarts.getInstanceByDom(document.getElementById('genreStackedChart'))?.resize();
+            echarts.getInstanceByDom(document.getElementById('genreHeatmap'))?.resize();
+            echarts.getInstanceByDom(document.getElementById('genreActiveRateChart'))?.resize();
+            echarts.getInstanceByDom(document.getElementById('genreCountChart'))?.resize();
+        });
+    </script>
+</body>
+</html>
